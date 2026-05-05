@@ -4,6 +4,7 @@ import * as Location from 'expo-location'
 import { useRouter } from 'expo-router'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+    Alert,
     Image,
     ScrollView,
     StyleSheet,
@@ -180,8 +181,9 @@ useEffect(() => {
       } else {
         setImageMap({})
       }
-    } catch (_e) {
-      // ignore for now
+    } catch (error) {
+      console.error('Error loading donations:', error)
+      Alert.alert('Error', 'Server is not responding. Please try again later.')
     } finally {
       setLoading(false)
     }
@@ -196,6 +198,9 @@ useEffect(() => {
   const visibleItems = useMemo(() => {
     const q = normalizeSearch(debouncedSearch);
     const filtered = (donations || []).filter((donation) => {
+      // Don't show items posted by the logged in user
+      if (donation.user_id === user?.id) return false;
+
       const lat = Number(donation.latitude);
       const lng = Number(donation.longitude);
       const hasCoords = isValidCoordinate(lat, lng);
@@ -232,13 +237,16 @@ useEffect(() => {
     }
 
     return filtered;
-  }, [donations, debouncedSearch, feedMode, userLocation, profileMap]);
+  }, [donations, debouncedSearch, feedMode, userLocation, profileMap, user?.id]);
 
   // Marker items should show all items matching search, regardless of radius filter
   // This addresses "even if it is not in the radius it has to show the locator on the map if the item is present"
   const visibleMarkerItems = useMemo(() => {
     const q = normalizeSearch(debouncedSearch);
     return (donations || []).filter((donation) => {
+      // Don't show items posted by the logged in user
+      if (donation.user_id === user?.id) return false;
+
       const lat = Number(donation.latitude);
       const lng = Number(donation.longitude);
       if (!isValidCoordinate(lat, lng)) return false;
@@ -247,7 +255,7 @@ useEffect(() => {
       const haystack = normalizeSearch(`${donation.title} ${donation.description} ${posterName}`);
       return !q || haystack.includes(q);
     });
-  }, [donations, debouncedSearch, profileMap]);
+  }, [donations, debouncedSearch, profileMap, user?.id]);
 
   // Auto-switch feedMode if searching and no results in 'nearby'
   useEffect(() => {

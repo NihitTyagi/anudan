@@ -4,6 +4,7 @@ import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+    Alert,
     ScrollView,
     StyleSheet,
     Text,
@@ -141,8 +142,9 @@ export default function DonateScreen() {
       }
       setProfileMap(map);
       setAvatarMap(avatars);
-    } catch (_e) {
-      // ignore for now
+    } catch (error) {
+      console.error('Error loading requests:', error);
+      Alert.alert('Error', 'Server is not responding. Please try again later.');
     } finally {
       setLoading(false);
     }
@@ -157,6 +159,9 @@ export default function DonateScreen() {
   const visibleItems = useMemo(() => {
     const q = normalizeSearch(debouncedSearch);
     const filtered = (requests || []).filter((request) => {
+      // Don't show items posted by the logged in user
+      if (request.user_id === user?.id) return false;
+
       const lat = Number(request.latitude);
       const lng = Number(request.longitude);
       const hasCoords = isValidCoordinate(lat, lng);
@@ -193,13 +198,16 @@ export default function DonateScreen() {
     }
 
     return filtered;
-  }, [requests, debouncedSearch, feedMode, userLocation, profileMap]);
+  }, [requests, debouncedSearch, feedMode, userLocation, profileMap, user?.id]);
 
   // Marker items should show all items matching search, regardless of radius filter
   // This addresses "even if it is not in the radius it has to show the locator on the map if the item is present"
   const visibleMarkerItems = useMemo(() => {
     const q = normalizeSearch(debouncedSearch);
     return (requests || []).filter((request) => {
+      // Don't show items posted by the logged in user
+      if (request.user_id === user?.id) return false;
+
       const lat = Number(request.latitude);
       const lng = Number(request.longitude);
       if (!isValidCoordinate(lat, lng)) return false;
@@ -208,7 +216,7 @@ export default function DonateScreen() {
       const haystack = normalizeSearch(`${request.title} ${request.description} ${posterName}`);
       return !q || haystack.includes(q);
     });
-  }, [requests, debouncedSearch, profileMap]);
+  }, [requests, debouncedSearch, profileMap, user?.id]);
 
   // Auto-switch feedMode if searching and no results in 'nearby'
   useEffect(() => {

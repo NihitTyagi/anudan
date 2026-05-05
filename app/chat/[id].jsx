@@ -2,14 +2,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import {
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+    Alert,
+    KeyboardAvoidingView,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../components/AuthProvider';
@@ -87,6 +88,18 @@ export default function ChatInboxScreen() {
             // 3. Send welcome message with item context
             if (itemTitle) {
               const welcomeText = `Hi! I'm interested in your ${itemType} for ${itemTitle}.`;
+              await supabase.from('chat_messages').insert({
+                room_id: currentRoom.id,
+                sender_id: user.id,
+                text: welcomeText,
+              });
+            }
+          } else {
+            // Room exists, but if we came from an item page, send the welcome message again
+            if (itemTitle) {
+              const welcomeText = `Hi! I'm interested in your ${itemType} for ${itemTitle}.`;
+              
+              // Check if this message was already sent recently (optional, but let's just send it as requested)
               await supabase.from('chat_messages').insert({
                 room_id: currentRoom.id,
                 sender_id: user.id,
@@ -272,6 +285,37 @@ export default function ChatInboxScreen() {
     }
   };
 
+  const handleDeleteChat = () => {
+    if (!room) return;
+
+    Alert.alert(
+      'Delete Chat',
+      'Are you sure you want to delete this conversation? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { error } = await supabase
+                .from('chat_rooms')
+                .delete()
+                .eq('id', room.id);
+              
+              if (error) throw error;
+              
+              router.replace('/(tabs)/chat');
+            } catch (error) {
+              console.error('Delete chat error:', error);
+              Alert.alert('Error', 'Failed to delete chat. Please try again.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const displayName = otherUser?.displayName || initialUserName || 'User';
   const displayAvatar = otherUser?.avatarUrl || avatarPath;
   const displayUserId = otherUser?.id || posterUserId;
@@ -304,6 +348,12 @@ export default function ChatInboxScreen() {
               <Text style={styles.headerName}>{displayName}</Text>
             </View>
           </View>
+          <TouchableOpacity
+            onPress={handleDeleteChat}
+            style={styles.menuButton}
+          >
+            <Ionicons name="ellipsis-vertical" size={20} color="#11181C" />
+          </TouchableOpacity>
         </View>
 
         {/* Messages List */}
@@ -412,6 +462,10 @@ const styles = StyleSheet.create({
   backButton: {
     marginRight: 10,
     padding: 5,
+  },
+  menuButton: {
+    padding: 5,
+    marginLeft: 5,
   },
   headerInfo: {
     flexDirection: 'row',

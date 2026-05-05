@@ -2,6 +2,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
+    Alert,
     ScrollView,
     StyleSheet,
     Text,
@@ -124,6 +125,7 @@ export default function ChatScreen() {
       setRooms(roomsWithLastMsg);
     } catch (error) {
       console.error('Error loading rooms:', error);
+      Alert.alert('Error', 'Server is not responding. Please try again later.');
     } finally {
       setLoading(false);
     }

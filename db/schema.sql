@@ -183,6 +183,8 @@ create policy "Users can see rooms they are in" on public.chat_rooms
   for select using (auth.uid() = participant1_id or auth.uid() = participant2_id);
 create policy "Users can create rooms" on public.chat_rooms
   for insert with check (auth.uid() = participant1_id or auth.uid() = participant2_id);
+create policy "Users can delete their own rooms" on public.chat_rooms
+  for delete using (auth.uid() = participant1_id or auth.uid() = participant2_id);
 
 alter table public.chat_messages enable row level security;
 create policy "Users can see messages in their rooms" on public.chat_messages
