@@ -1,6 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
   KeyboardAvoidingView,
@@ -36,6 +37,7 @@ export default function ChatInboxScreen() {
   const [room, setRoom] = useState(null);
   const [loading, setLoading] = useState(true);
   const [otherUser, setOtherUser] = useState(null);
+  const roomRef = useRef(null); // keep a ref so markAllRead can always access current room
 
   // Params from navigation
   const initialUserName = paramStr(params.userName);
@@ -47,7 +49,22 @@ export default function ChatInboxScreen() {
 
   const isNewChat = chatId && chatId.startsWith('chat_');
 
-  // Load or Create Room
+  // ─── Mark ALL unread messages in this room as read ───────────────────────
+  const markAllRead = useCallback(async (roomId) => {
+    if (!roomId || !user?.id) return;
+    try {
+      await supabase
+        .from('chat_messages')
+        .update({ is_read: true })
+        .eq('room_id', roomId)
+        .neq('sender_id', user.id)
+        .eq('is_read', false);
+    } catch (e) {
+      console.error('markAllRead error:', e);
+    }
+  }, [user?.id]);
+
+  // ─── Load or Create Room ─────────────────────────────────────────────────
   useEffect(() => {
     if (!user) return;
 
@@ -59,10 +76,8 @@ export default function ChatInboxScreen() {
 
         if (isNewChat) {
           if (!otherId) throw new Error('Recipient ID missing');
-          // Normalize participant order for uniqueness
           const [p1, p2] = [user.id, otherId].sort();
 
-          // 1. Try to find existing room for these participants (any item)
           const { data: existingRooms } = await supabase
             .from('chat_rooms')
             .select('*')
@@ -72,20 +87,15 @@ export default function ChatInboxScreen() {
           currentRoom = existingRooms?.[0];
 
           if (!currentRoom) {
-            // 2. Create new room if not exists
             const { data: newRoom, error: createError } = await supabase
               .from('chat_rooms')
-              .insert({
-                participant1_id: p1,
-                participant2_id: p2,
-              })
+              .insert({ participant1_id: p1, participant2_id: p2 })
               .select()
               .single();
 
             if (createError) throw createError;
             currentRoom = newRoom;
 
-            // 3. Send welcome message with item context
             if (itemTitle) {
               const welcomeText = `Hi! I'm interested in your ${itemType} for ${itemTitle}.`;
               await supabase.from('chat_messages').insert({
@@ -95,11 +105,8 @@ export default function ChatInboxScreen() {
               });
             }
           } else {
-            // Room exists, but if we came from an item page, send the welcome message again
             if (itemTitle) {
               const welcomeText = `Hi! I'm interested in your ${itemType} for ${itemTitle}.`;
-              
-              // Check if this message was already sent recently (optional, but let's just send it as requested)
               await supabase.from('chat_messages').insert({
                 room_id: currentRoom.id,
                 sender_id: user.id,
@@ -108,7 +115,6 @@ export default function ChatInboxScreen() {
             }
           }
         } else {
-          // Load existing room by ID
           const { data: existingRoom } = await supabase
             .from('chat_rooms')
             .select('*')
@@ -116,13 +122,16 @@ export default function ChatInboxScreen() {
             .single();
           currentRoom = existingRoom;
           if (currentRoom) {
-            otherId = currentRoom.participant1_id === user.id ? currentRoom.participant2_id : currentRoom.participant1_id;
+            otherId = currentRoom.participant1_id === user.id
+              ? currentRoom.participant2_id
+              : currentRoom.participant1_id;
           }
         }
 
+        roomRef.current = currentRoom;
         setRoom(currentRoom);
+
         if (currentRoom && otherId) {
-          // Fetch the latest profile for the other user to avoid "User" bug
           const { data: profileData } = await supabase
             .from('profiles')
             .select('display_name, avatar_url')
@@ -132,10 +141,11 @@ export default function ChatInboxScreen() {
           setOtherUser({
             id: otherId,
             displayName: profileData?.display_name || initialUserName || 'User',
-            avatarUrl: profileData?.avatar_url || avatarPath || null
+            avatarUrl: profileData?.avatar_url || avatarPath || null,
           });
 
-          fetchMessages(currentRoom.id);
+          // Fetch messages AND mark as read together
+          await fetchMessages(currentRoom.id);
         }
       } catch (error) {
         console.error('Chat init error:', error);
@@ -147,7 +157,18 @@ export default function ChatInboxScreen() {
     initChat();
   }, [chatId, user, posterUserId]);
 
-  // Subscribe to messages in a separate useEffect for proper cleanup
+  // ─── Re-mark as read every time screen comes into focus ─────────────────
+  // This is the KEY fix: if the user left and came back, dot clears immediately
+  useFocusEffect(
+    useCallback(() => {
+      const currentRoom = roomRef.current;
+      if (currentRoom?.id) {
+        markAllRead(currentRoom.id);
+      }
+    }, [markAllRead])
+  );
+
+  // ─── Realtime subscription ───────────────────────────────────────────────
   useEffect(() => {
     if (!room?.id || !user?.id) return;
 
@@ -161,39 +182,43 @@ export default function ChatInboxScreen() {
       }, async (payload) => {
         if (payload.eventType === 'INSERT') {
           const newMessage = payload.new;
-          
+          const isMyMessage = newMessage.sender_id === user.id;
+
           setMessages(prev => {
-            // Check for optimistic match (by text and being "optimistic")
-            const isMyMessage = newMessage.sender_id === user.id;
             if (isMyMessage) {
-              const optimisticIdx = prev.findIndex(m => m.isOptimistic && m.text === newMessage.text);
+              const optimisticIdx = prev.findIndex(
+                m => m.isOptimistic && m.text === newMessage.text
+              );
               if (optimisticIdx !== -1) {
-                // Replace optimistic with real one
                 const next = [...prev];
                 next[optimisticIdx] = {
                   id: newMessage.id,
                   text: newMessage.text,
                   isSent: true,
                   isRead: newMessage.is_read,
-                  timestamp: new Date(newMessage.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                  timestamp: new Date(newMessage.created_at).toLocaleTimeString([], {
+                    hour: '2-digit', minute: '2-digit',
+                  }),
                 };
                 return next;
               }
             }
 
             if (prev.find(m => m.id === newMessage.id)) return prev;
-            
+
             return [...prev, {
               id: newMessage.id,
               text: newMessage.text,
-              isSent: newMessage.sender_id === user.id,
+              isSent: isMyMessage,
               isRead: newMessage.is_read,
-              timestamp: new Date(newMessage.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+              timestamp: new Date(newMessage.created_at).toLocaleTimeString([], {
+                hour: '2-digit', minute: '2-digit',
+              }),
             }];
           });
 
-          // Mark as read if from other person
-          if (newMessage.sender_id !== user.id) {
+          // If it's an incoming message, mark it read immediately
+          if (!isMyMessage) {
             await supabase
               .from('chat_messages')
               .update({ is_read: true })
@@ -201,9 +226,11 @@ export default function ChatInboxScreen() {
           }
         } else if (payload.eventType === 'UPDATE') {
           const updatedMessage = payload.new;
-          setMessages(prev => prev.map(m => 
-            m.id === updatedMessage.id ? { ...m, isRead: updatedMessage.is_read } : m
-          ));
+          setMessages(prev =>
+            prev.map(m =>
+              m.id === updatedMessage.id ? { ...m, isRead: updatedMessage.is_read } : m
+            )
+          );
         }
       })
       .subscribe();
@@ -213,78 +240,69 @@ export default function ChatInboxScreen() {
     };
   }, [room?.id, user?.id]);
 
+  // ─── Fetch messages + mark as read ──────────────────────────────────────
   async function fetchMessages(roomId) {
     const { data } = await supabase
       .from('chat_messages')
       .select('*')
       .eq('room_id', roomId)
       .order('created_at', { ascending: true });
-    
+
     if (data) {
       setMessages(data.map(m => ({
         id: m.id,
         text: m.text,
         isSent: m.sender_id === user.id,
         isRead: m.is_read,
-        timestamp: new Date(m.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        timestamp: new Date(m.created_at).toLocaleTimeString([], {
+          hour: '2-digit', minute: '2-digit',
+        }),
       })));
 
-      // Mark messages as read
-      const unreadIds = data
-        .filter(m => m.sender_id !== user.id && !m.is_read)
-        .map(m => m.id);
-      
-      if (unreadIds.length > 0) {
-        await supabase
-          .from('chat_messages')
-          .update({ is_read: true })
-          .in('id', unreadIds);
-      }
+      // Mark all unread messages from the other person as read
+      await markAllRead(roomId);
     }
   }
 
-  // Remove old subscribeToMessages function as it's now in useEffect
-  // ... rest of the component remains same
-
+  // ─── Auto-scroll ─────────────────────────────────────────────────────────
   useEffect(() => {
     setTimeout(() => {
       scrollViewRef.current?.scrollToEnd({ animated: true });
     }, 100);
   }, [messages]);
 
+  // ─── Send message ────────────────────────────────────────────────────────
   const handleSendMessage = async () => {
     if (messageText.trim() && room && user) {
       const text = messageText.trim();
       setMessageText('');
-      
-      // OPTIMISTIC UPDATE: Add message to UI immediately
+
       const tempId = `temp-${Date.now()}`;
       const optimisticMsg = {
         id: tempId,
-        text: text,
+        text,
         isSent: true,
         isRead: false,
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        isOptimistic: true, // Tag it so we don't duplicate when DB sends it back
+        isOptimistic: true,
       };
-      
+
       setMessages(prev => [...prev, optimisticMsg]);
-      
-      // Actually send to Supabase
+
       const { error } = await supabase.from('chat_messages').insert({
         room_id: room.id,
         sender_id: user.id,
-        text: text,
+        text,
       });
 
       if (error) {
         console.error('Send message error:', error);
-        // Rollback optimistic update on error
         setMessages(prev => prev.filter(m => m.id !== tempId));
       }
     }
   };
 
+  // ─── Delete chat ─────────────────────────────────────────────────────────
   const handleDeleteChat = () => {
     if (!room) return;
 
@@ -302,9 +320,7 @@ export default function ChatInboxScreen() {
                 .from('chat_rooms')
                 .delete()
                 .eq('id', room.id);
-              
               if (error) throw error;
-              
               router.replace('/(tabs)/chat');
             } catch (error) {
               console.error('Delete chat error:', error);
@@ -329,10 +345,7 @@ export default function ChatInboxScreen() {
       >
         {/* Header */}
         <View style={[styles.header, { paddingTop: 12 }]}>
-          <TouchableOpacity
-            onPress={() => router.back()}
-            style={styles.backButton}
-          >
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
             <Ionicons name="arrow-back" size={24} color="#11181C" />
           </TouchableOpacity>
           <View style={styles.headerInfo}>
@@ -348,15 +361,12 @@ export default function ChatInboxScreen() {
               <Text style={styles.headerName}>{displayName}</Text>
             </View>
           </View>
-          <TouchableOpacity
-            onPress={handleDeleteChat}
-            style={styles.menuButton}
-          >
+          <TouchableOpacity onPress={handleDeleteChat} style={styles.menuButton}>
             <Ionicons name="ellipsis-vertical" size={20} color="#11181C" />
           </TouchableOpacity>
         </View>
 
-        {/* Messages List */}
+        {/* Messages */}
         <ScrollView
           ref={scrollViewRef}
           style={styles.messagesContainer}
@@ -408,10 +418,8 @@ export default function ChatInboxScreen() {
 
         {/* Input Bar */}
         <View style={[
-          styles.inputContainer, 
-          { 
-            paddingBottom: Platform.OS === 'ios' ? Math.max(insets.bottom, 10) : 20,
-          }
+          styles.inputContainer,
+          { paddingBottom: Platform.OS === 'ios' ? Math.max(insets.bottom, 10) : 20 },
         ]}>
           <TextInput
             style={styles.input}
@@ -424,10 +432,7 @@ export default function ChatInboxScreen() {
           />
           <TouchableOpacity
             onPress={handleSendMessage}
-            style={[
-              styles.sendButton,
-              messageText.trim() ? styles.sendButtonActive : null,
-            ]}
+            style={[styles.sendButton, messageText.trim() ? styles.sendButtonActive : null]}
             disabled={!messageText.trim()}
           >
             <Ionicons
@@ -443,13 +448,8 @@ export default function ChatInboxScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-  },
-  keyboardView: {
-    flex: 1,
-  },
+  container: { flex: 1, backgroundColor: '#fff' },
+  keyboardView: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -459,60 +459,15 @@ const styles = StyleSheet.create({
     borderBottomColor: '#e0e0e0',
     backgroundColor: '#fff',
   },
-  backButton: {
-    marginRight: 10,
-    padding: 5,
-  },
-  menuButton: {
-    padding: 5,
-    marginLeft: 5,
-  },
-  headerInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  headerAvatarWrap: {
-    marginRight: 12,
-  },
-  headerText: {
-    flex: 1,
-  },
-  headerName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#11181C',
-    marginBottom: 2,
-  },
-  itemBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    backgroundColor: '#f5f5f5',
-    paddingHorizontal: 6,
-    paddingVertical: 2,
-    borderRadius: 10,
-    alignSelf: 'flex-start',
-  },
-  itemBadgeText: {
-    fontSize: 10,
-    color: '#666',
-    fontWeight: '500',
-  },
-  messagesContainer: {
-    flex: 1,
-    backgroundColor: '#f5f5f5',
-  },
-  messagesContent: {
-    padding: 15,
-    paddingBottom: 10,
-    flexGrow: 1,
-  },
-  loadingWrapper: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+  backButton: { marginRight: 10, padding: 5 },
+  menuButton: { padding: 5, marginLeft: 5 },
+  headerInfo: { flexDirection: 'row', alignItems: 'center', flex: 1 },
+  headerAvatarWrap: { marginRight: 12 },
+  headerText: { flex: 1 },
+  headerName: { fontSize: 16, fontWeight: '600', color: '#11181C', marginBottom: 2 },
+  messagesContainer: { flex: 1, backgroundColor: '#f5f5f5' },
+  messagesContent: { padding: 15, paddingBottom: 10, flexGrow: 1 },
+  loadingWrapper: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   messageBubble: {
     maxWidth: '75%',
     marginBottom: 12,
@@ -521,7 +476,7 @@ const styles = StyleSheet.create({
   },
   sentMessage: {
     alignSelf: 'flex-end',
-    backgroundColor: '#11181C', // BLACK as requested
+    backgroundColor: '#11181C',
     borderBottomRightRadius: 4,
   },
   receivedMessage: {
@@ -531,29 +486,12 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e0e0e0',
   },
-  messageText: {
-    fontSize: 15,
-    lineHeight: 20,
-    marginBottom: 4,
-  },
-  sentText: {
-    color: '#fff',
-  },
-  receivedText: {
-    color: '#11181C',
-  },
-  messageTime: {
-    fontSize: 11,
-    alignSelf: 'flex-end',
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  sentTime: {
-    color: 'rgba(255, 255, 255, 0.7)',
-  },
-  receivedTime: {
-    color: '#999',
-  },
+  messageText: { fontSize: 15, lineHeight: 20, marginBottom: 4 },
+  sentText: { color: '#fff' },
+  receivedText: { color: '#11181C' },
+  messageTime: { fontSize: 11, alignSelf: 'flex-end', flexDirection: 'row', alignItems: 'center' },
+  sentTime: { color: 'rgba(255,255,255,0.7)' },
+  receivedTime: { color: '#999' },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -582,7 +520,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  sendButtonActive: {
-    backgroundColor: '#11181C', // BLACK to match theme
-  },
+  sendButtonActive: { backgroundColor: '#11181C' },
 });

@@ -14,20 +14,39 @@ export default function TabLayout() {
   useEffect(() => {
     if (!user) return;
 
-    // Initial check for unread messages
     const checkUnread = async () => {
       try {
-        const { count, error } = await supabase
-          .from('chat_messages')
-          .select('*', { count: 'exact', head: true })
-          .neq('sender_id', user.id)
-          .eq('is_read', false);
-        
-        if (error) {
-          console.error('Check unread error:', error);
+        // Step 1: get all room IDs where this user is a participant
+        const { data: roomData, error: roomError } = await supabase
+          .from('chat_rooms')
+          .select('id')
+          .or(`participant1_id.eq.${user.id},participant2_id.eq.${user.id}`);
+
+        if (roomError) {
+          console.error('Room fetch error:', roomError);
           return;
         }
-        
+
+        const roomIds = (roomData || []).map(r => r.id);
+
+        if (roomIds.length === 0) {
+          setHasUnread(false);
+          return;
+        }
+
+        // Step 2: count unread messages only in those rooms, not sent by current user
+        const { count, error: msgError } = await supabase
+          .from('chat_messages')
+          .select('*', { count: 'exact', head: true })
+          .in('room_id', roomIds)
+          .neq('sender_id', user.id)
+          .eq('is_read', false);
+
+        if (msgError) {
+          console.error('Check unread error:', msgError);
+          return;
+        }
+
         setHasUnread(count > 0);
       } catch (err) {
         console.error('Unread check catch:', err);
@@ -36,7 +55,7 @@ export default function TabLayout() {
 
     checkUnread();
 
-    // Subscribe to ALL message changes to update the dot in real-time
+    // Subscribe to message changes and re-check
     const channel = supabase
       .channel('global-unread-dot')
       .on('postgres_changes', {
@@ -52,7 +71,7 @@ export default function TabLayout() {
       supabase.removeChannel(channel);
     };
   }, [user]);
-  
+
   return (
     <Tabs
       screenOptions={{
@@ -103,7 +122,7 @@ export default function TabLayout() {
             <View>
               <Ionicons name="chatbubbles-outline" size={size} color={color} />
               {hasUnread && (
-                <View 
+                <View
                   style={{
                     position: 'absolute',
                     right: -2,
