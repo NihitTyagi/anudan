@@ -1,7 +1,16 @@
+import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
-import * as Location from 'expo-location';
-import { ActivityIndicator, Alert, Button, ScrollView, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import LocationPickerModal from '../../components/LocationPickerModal';
 import { isValidCoordinate } from '../../lib/geo';
@@ -39,9 +48,7 @@ export default function AddRequest() {
           setLongitude(data.longitude ?? null);
           setLocationLabel(data.location_label || '');
         }
-      } catch (_e) {
-        // ignore
-      }
+      } catch (_e) {}
     })();
   }, [editId]);
 
@@ -84,7 +91,6 @@ export default function AddRequest() {
         return;
       }
 
-      // Compute poster name once (persist it on the post)
       let posterName = null;
       try {
         const { data: prof } = await supabase
@@ -93,9 +99,7 @@ export default function AddRequest() {
           .eq('user_id', user.id)
           .maybeSingle();
         posterName = prof?.display_name || null;
-      } catch (_e) {
-        // ignore
-      }
+      } catch (_e) {}
       if (!posterName) {
         const meta = user.user_metadata || {};
         posterName =
@@ -104,6 +108,7 @@ export default function AddRequest() {
           user.email ||
           null;
       }
+
       if (editId) {
         const { error } = await supabase
           .from('request_items')
@@ -147,50 +152,94 @@ export default function AddRequest() {
     }
   };
 
+  const hasLocation = isValidCoordinate(latitude, longitude);
+
   return (
-    <SafeAreaView style={{ flex: 1 }}>
-      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 30 }}>
-        <Text style={{ fontSize: 24, fontWeight: 'bold', marginBottom: 20 }}>Request Product</Text>
-        <TextInput
-          placeholder="Title"
-          value={title}
-          onChangeText={setTitle}
-          style={{ borderWidth: 1, borderColor: '#ccc', padding: 10, marginBottom: 10, borderRadius: 8 }}
-        />
-        <TextInput
-          placeholder="Description"
-          value={description}
-          onChangeText={setDescription}
-          multiline
-          style={{ borderWidth: 1, borderColor: '#ccc', padding: 10, marginBottom: 10, borderRadius: 8, minHeight: 60 }}
-        />
-        <View style={{ borderWidth: 1, borderColor: '#e3e3e3', borderRadius: 10, padding: 12, marginBottom: 12, gap: 8 }}>
-          <Text style={{ fontWeight: '700', color: '#11181C' }}>Item Location</Text>
-          <Text style={{ color: '#666', fontSize: 13 }}>
-            Set where this requested item is needed.
-          </Text>
-          <Text style={{ color: '#11181C', fontSize: 13 }}>
-            {isValidCoordinate(latitude, longitude)
-              ? `${Number(latitude).toFixed(6)}, ${Number(longitude).toFixed(6)}`
-              : 'No location selected'}
-          </Text>
-          {locationLabel ? <Text style={{ color: '#444', fontSize: 12 }}>{locationLabel}</Text> : null}
-          <View style={{ flexDirection: 'row', gap: 8 }}>
-            <TouchableOpacity onPress={useCurrentLocation} style={{ flex: 1 }}>
-              <View style={{ backgroundColor: '#f4f4f4', padding: 10, borderRadius: 8, alignItems: 'center' }}>
-                <Text>Use Current</Text>
-              </View>
+    <SafeAreaView style={styles.safeArea}>
+      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+
+        {/* Header */}
+        <View style={styles.header}>
+          <Text style={styles.headerEyebrow}>{editId ? 'EDIT REQUEST' : 'NEW REQUEST'}</Text>
+          <Text style={styles.headerTitle}>Request an Item</Text>
+        </View>
+
+        {/* Divider */}
+        <View style={styles.divider} />
+
+        {/* Section: Details */}
+        <Text style={styles.sectionLabel}>ITEM DETAILS</Text>
+
+        <View style={styles.inputWrapper}>
+          <Text style={styles.inputLabel}>Title</Text>
+          <TextInput
+            placeholder="What do you need?"
+            placeholderTextColor="#999"
+            value={title}
+            onChangeText={setTitle}
+            style={styles.input}
+          />
+        </View>
+
+        <View style={styles.inputWrapper}>
+          <Text style={styles.inputLabel}>Description</Text>
+          <TextInput
+            placeholder="Size, quantity, urgency, any useful details..."
+            placeholderTextColor="#999"
+            value={description}
+            onChangeText={setDescription}
+            multiline
+            style={[styles.input, styles.inputMultiline]}
+          />
+        </View>
+
+        {/* Section: Location */}
+        <View style={styles.divider} />
+        <Text style={styles.sectionLabel}>NEEDED AT</Text>
+
+        <View style={styles.locationCard}>
+          <View style={styles.locationInfo}>
+            <View style={[styles.locationDot, hasLocation && styles.locationDotActive]} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.locationCoords}>
+                {hasLocation
+                  ? `${Number(latitude).toFixed(5)}, ${Number(longitude).toFixed(5)}`
+                  : 'No location set'}
+              </Text>
+              {locationLabel ? (
+                <Text style={styles.locationLabel}>{locationLabel}</Text>
+              ) : null}
+            </View>
+          </View>
+
+          <View style={styles.locationActions}>
+            <TouchableOpacity onPress={useCurrentLocation} style={styles.btnSecondary} activeOpacity={0.7}>
+              <Text style={styles.btnSecondaryText}>Use Current</Text>
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => setPickerVisible(true)} style={{ flex: 1 }}>
-              <View style={{ backgroundColor: '#e6f4fe', padding: 10, borderRadius: 8, alignItems: 'center' }}>
-                <Text>Select on Map</Text>
-              </View>
+            <TouchableOpacity onPress={() => setPickerVisible(true)} style={styles.btnPrimary} activeOpacity={0.7}>
+              <Text style={styles.btnPrimaryText}>Pick on Map</Text>
             </TouchableOpacity>
           </View>
         </View>
-        <Button title={uploading ? 'Submitting...' : 'Submit'} onPress={handleSubmit} disabled={uploading} />
-        {uploading && <ActivityIndicator style={{ marginTop: 10 }} />}
+
+        {/* Submit */}
+        <View style={styles.divider} />
+
+        <TouchableOpacity
+          onPress={handleSubmit}
+          disabled={uploading}
+          style={[styles.submitBtn, uploading && styles.submitBtnDisabled]}
+          activeOpacity={0.85}
+        >
+          {uploading ? (
+            <ActivityIndicator color="#fff" size="small" />
+          ) : (
+            <Text style={styles.submitBtnText}>{editId ? 'Save Changes' : 'Submit Request'}</Text>
+          )}
+        </TouchableOpacity>
+
       </ScrollView>
+
       <LocationPickerModal
         visible={pickerVisible}
         initialLatitude={latitude}
@@ -206,3 +255,157 @@ export default function AddRequest() {
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  scroll: {
+    paddingHorizontal: 24,
+    paddingTop: 8,
+    paddingBottom: 48,
+  },
+
+  // Header
+  header: {
+    paddingTop: 20,
+    paddingBottom: 20,
+  },
+  headerEyebrow: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 2,
+    color: '#999',
+    marginBottom: 6,
+  },
+  headerTitle: {
+    fontSize: 30,
+    fontWeight: '800',
+    color: '#000',
+    letterSpacing: -0.5,
+  },
+
+  divider: {
+    height: 1,
+    backgroundColor: '#f0f0f0',
+    marginVertical: 20,
+  },
+
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    letterSpacing: 2,
+    color: '#999',
+    marginBottom: 14,
+  },
+
+  // Inputs
+  inputWrapper: {
+    marginBottom: 16,
+  },
+  inputLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#000',
+    marginBottom: 6,
+  },
+  input: {
+    borderWidth: 1.5,
+    borderColor: '#e8e8e8',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    fontSize: 15,
+    color: '#000',
+    backgroundColor: '#fafafa',
+  },
+  inputMultiline: {
+    minHeight: 90,
+    textAlignVertical: 'top',
+  },
+
+  // Location
+  locationCard: {
+    borderWidth: 1.5,
+    borderColor: '#e8e8e8',
+    borderRadius: 12,
+    padding: 16,
+    backgroundColor: '#fafafa',
+    gap: 14,
+  },
+  locationInfo: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  locationDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: '#d0d0d0',
+    marginTop: 3,
+  },
+  locationDotActive: {
+    backgroundColor: '#000',
+  },
+  locationCoords: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#000',
+    marginBottom: 2,
+  },
+  locationLabel: {
+    fontSize: 12,
+    color: '#666',
+  },
+  locationActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  btnSecondary: {
+    flex: 1,
+    borderWidth: 1.5,
+    borderColor: '#000',
+    borderRadius: 8,
+    paddingVertical: 11,
+    alignItems: 'center',
+  },
+  btnSecondaryText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#000',
+    letterSpacing: 0.3,
+  },
+  btnPrimary: {
+    flex: 1,
+    backgroundColor: '#000',
+    borderRadius: 8,
+    paddingVertical: 11,
+    alignItems: 'center',
+  },
+  btnPrimaryText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#fff',
+    letterSpacing: 0.3,
+  },
+
+  // Submit
+  submitBtn: {
+    backgroundColor: '#000',
+    borderRadius: 12,
+    paddingVertical: 18,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  submitBtnDisabled: {
+    backgroundColor: '#555',
+  },
+  submitBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+});
