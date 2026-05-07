@@ -1,9 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
-import UserAvatar from '../../components/UserAvatar';
-import { useAuth } from '../../components/AuthProvider';
-import { supabase } from '../../lib/supabaseClient';
+import { useEffect, useRef, useState } from 'react';
 import {
   Animated,
   Dimensions,
@@ -17,40 +14,92 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useAuth } from '../../components/AuthProvider';
+import UserAvatar from '../../components/UserAvatar';
+import { supabase } from '../../lib/supabaseClient';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
-// Promotional cards data
+// Promotional cards — dark monochrome theme with decorative accents
 const promotionalCards = [
   {
     id: 1,
     text: 'Have spare things? Someone nearby might need them.',
     cta: 'Start Giving.',
-    backgroundColor: '#FF6B6B', // Red-orange
+    bg: '#0D0D0D',
+    textColor: '#F5F5F5',
+    ctaColor: '#FFFFFF',
+    icon: 'gift-outline',
+    pattern: 'dots',
   },
   {
     id: 2,
-    text: 'Need a helping hand? Someone nearby might have exactly what you\'re looking for.',
+    text: "Need a helping hand? Someone nearby might have exactly what you're looking for.",
     cta: '',
-    backgroundColor: '#4ECDC4', // Teal
+    bg: '#1A1A1A',
+    textColor: '#E8E8E8',
+    ctaColor: '#fff',
+    icon: 'hand-left-outline',
+    pattern: 'lines',
   },
   {
     id: 3,
-    text: 'Clear your space, clear your mind. Find a second home for your extras',
+    text: 'Clear your space, clear your mind. Find a second home for your extras.',
     cta: '',
-    backgroundColor: '#95E1D3', // Light green
+    bg: '#262626',
+    textColor: '#E0E0E0',
+    ctaColor: '#fff',
+    icon: 'home-outline',
+    pattern: 'dots',
   },
   {
     id: 4,
-    text: 'Don\'t buy new just look around. Helpful neighbors are just a click away',
+    text: "Don't buy new — just look around. Helpful neighbors are a click away.",
     cta: '',
-    backgroundColor: '#F7DC6F', // Yellow
+    bg: '#111111',
+    textColor: '#EBEBEB',
+    ctaColor: '#fff',
+    icon: 'search-outline',
+    pattern: 'lines',
   },
   {
     id: 5,
-    text: 'Your smile act of sharing can be a big change for someone else',
+    text: 'Your small act of sharing can be a big change for someone else.',
     cta: '',
-    backgroundColor: '#BB8FCE', // Purple
+    bg: '#1C1C1C',
+    textColor: '#E5E5E5',
+    ctaColor: '#fff',
+    icon: 'heart-outline',
+    pattern: 'dots',
+  },
+];
+
+// Feature data
+const features = [
+  {
+    icon: 'search',
+    title: 'Smart Search',
+    description: 'Find items you need or people who need yours with our smart matching system.',
+  },
+  {
+    icon: 'navigate',
+    title: 'Hyper-Local',
+    description: 'Connect with neighbors within 5–10 km. No shipping — just meet and hand over.',
+  },
+  {
+    icon: 'chatbubble-ellipses',
+    title: 'Direct Chat',
+    description: 'Coordinate safe handovers at public locations directly with donors or requesters.',
+  },
+  {
+    icon: 'shield-checkmark',
+    title: 'Safe & Secure',
+    description: 'Privacy-first with location masking and verified profiles for secure exchanges.',
+  },
+  {
+    icon: 'people',
+    title: 'Community',
+    description: 'Build stronger neighbourhoods by sharing resources with people around you.',
   },
 ];
 
@@ -63,19 +112,16 @@ export default function HomeScreen() {
   const slideAnim = useRef(new Animated.Value(0)).current;
   const insets = useSafeAreaInsets();
   const autoRotateEnabled = useRef(true);
+
   const panResponder = useRef(
     PanResponder.create({
       onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: (_, gestureState) => {
-        return Math.abs(gestureState.dx) > 10;
-      },
+      onMoveShouldSetPanResponder: (_, gestureState) => Math.abs(gestureState.dx) > 10,
       onPanResponderGrant: () => {
-        // Disable auto-rotate when user starts swiping
         autoRotateEnabled.current = false;
         slideAnim.setValue(0);
       },
       onPanResponderMove: (_, gestureState) => {
-        // Normalize swipe distance to [-1, 1]
         const maxSwipeRatio = 0.3;
         const dxRatio = gestureState.dx / SCREEN_WIDTH;
         const clampedRatio = Math.max(-maxSwipeRatio, Math.min(maxSwipeRatio, dxRatio));
@@ -84,15 +130,11 @@ export default function HomeScreen() {
       onPanResponderRelease: (_, gestureState) => {
         const swipeThresholdRatio = 0.2;
         const dxRatio = gestureState.dx / SCREEN_WIDTH;
-        
         if (dxRatio > swipeThresholdRatio) {
-          // Swipe right - go to previous card
           goToPreviousCard();
         } else if (dxRatio < -swipeThresholdRatio) {
-          // Swipe left - go to next card
           goToNextCard();
         } else {
-          // Return to center
           Animated.spring(slideAnim, {
             toValue: 0,
             useNativeDriver: true,
@@ -100,66 +142,36 @@ export default function HomeScreen() {
             friction: 7,
           }).start();
         }
-        
-        // Re-enable auto-rotate after a delay
-        setTimeout(() => {
-          autoRotateEnabled.current = true;
-        }, 3000);
+        setTimeout(() => { autoRotateEnabled.current = true; }, 3000);
       },
     })
   ).current;
 
   const goToNextCard = () => {
     slideAnim.setValue(1);
-    setCurrentCardIndex((prevIndex) => (prevIndex + 1) % promotionalCards.length);
-    Animated.timing(slideAnim, {
-      toValue: 0,
-      duration: 400,
-      useNativeDriver: true,
-    }).start();
+    setCurrentCardIndex((prev) => (prev + 1) % promotionalCards.length);
+    Animated.timing(slideAnim, { toValue: 0, duration: 400, useNativeDriver: true }).start();
   };
 
   const goToPreviousCard = () => {
     slideAnim.setValue(-1);
-    setCurrentCardIndex((prevIndex) => (prevIndex - 1 + promotionalCards.length) % promotionalCards.length);
-    Animated.timing(slideAnim, {
-      toValue: 0,
-      duration: 400,
-      useNativeDriver: true,
-    }).start();
+    setCurrentCardIndex((prev) => (prev - 1 + promotionalCards.length) % promotionalCards.length);
+    Animated.timing(slideAnim, { toValue: 0, duration: 400, useNativeDriver: true }).start();
   };
 
-  const navigateToDonate = () => {
-    router.push('/(tabs)/donate');
-  };
+  const navigateToDonate = () => router.push('/(tabs)/donate');
+  const navigateToRequest = () => router.push('/(tabs)/request');
 
-  const navigateToRequest = () => {
-    router.push('/(tabs)/request');
-  };
-
-  // Auto-rotate carousel every 3 seconds with horizontal swipe
   useEffect(() => {
     const interval = setInterval(() => {
       if (autoRotateEnabled.current) {
-        // Slide out to left
-        Animated.timing(slideAnim, {
-          toValue: -1,
-          duration: 400,
-          useNativeDriver: true,
-        }).start(() => {
-          // Change card
-          setCurrentCardIndex((prevIndex) => (prevIndex + 1) % promotionalCards.length);
-          // Reset animation and slide in from right
+        Animated.timing(slideAnim, { toValue: -1, duration: 400, useNativeDriver: true }).start(() => {
+          setCurrentCardIndex((prev) => (prev + 1) % promotionalCards.length);
           slideAnim.setValue(1);
-          Animated.timing(slideAnim, {
-            toValue: 0,
-            duration: 400,
-            useNativeDriver: true,
-          }).start();
+          Animated.timing(slideAnim, { toValue: 0, duration: 400, useNativeDriver: true }).start();
         });
       }
-    }, 3000); // Change every 3 seconds
-
+    }, 3000);
     return () => clearInterval(interval);
   }, [slideAnim]);
 
@@ -183,15 +195,15 @@ export default function HomeScreen() {
         '';
       setHeaderDisplayName(name);
     })();
-    return () => {
-      mounted = false;
-    };
+    return () => { mounted = false; };
   }, [user?.id]);
+
+  const currentCard = promotionalCards[currentCardIndex];
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-      
+      <StatusBar barStyle="dark-content" backgroundColor="#FAFAFA" />
+
       {/* Header */}
       <View style={[styles.header, { paddingTop: Math.max(insets.top, 10) }]}>
         <Text style={styles.headerTitle}>Anudaan</Text>
@@ -204,75 +216,93 @@ export default function HomeScreen() {
             userId={user?.id}
             name={headerDisplayName || user?.email}
             storagePath={headerAvatarPath}
-            size={40}
+            size={42}
           />
         </TouchableOpacity>
       </View>
 
-      <ScrollView 
+      <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* Main Action Buttons */}
+
+        {/* Action Buttons */}
         <View style={styles.actionButtonsContainer}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.actionButton, styles.donateButton]}
             onPress={navigateToDonate}
-            activeOpacity={0.9}
+            activeOpacity={0.85}
           >
-            <View style={styles.buttonIconContainer}>
-              <Ionicons name="star" size={22} color="#fff" />
+            <View style={styles.buttonIconWrap}>
+              <Ionicons name="arrow-up-circle" size={20} color="#111" />
             </View>
-            <Text style={styles.actionButtonText}>Donate</Text>
+            <Text style={styles.donateButtonText}>Donate</Text>
+            <Ionicons name="chevron-forward" size={16} color="#111" style={{ opacity: 0.4 }} />
           </TouchableOpacity>
 
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.actionButton, styles.requestButton]}
             onPress={navigateToRequest}
-            activeOpacity={0.9}
+            activeOpacity={0.85}
           >
-            <View style={styles.buttonIconContainer}>
-              <Ionicons name="radio" size={22} color="#fff" />
+            <View style={styles.buttonIconWrapDark}>
+              <Ionicons name="arrow-down-circle" size={20} color="#fff" />
             </View>
-            <Text style={styles.actionButtonText}>Request</Text>
+            <Text style={styles.requestButtonText}>Request</Text>
+            <Ionicons name="chevron-forward" size={16} color="#fff" style={{ opacity: 0.4 }} />
           </TouchableOpacity>
+        </View>
+
+        {/* Section Label */}
+        <View style={styles.sectionLabelRow}>
+          <Text style={styles.sectionLabel}>Community Stories</Text>
+          <View style={styles.sectionLine} />
         </View>
 
         {/* Promotional Cards Carousel */}
         <View style={styles.carouselContainer} {...panResponder.panHandlers}>
           {promotionalCards.map((card, index) => {
-            const isActive = index === currentCardIndex;
-            
-            // Only show the active card
-            if (!isActive) return null;
-
+            if (index !== currentCardIndex) return null;
             const translateX = slideAnim.interpolate({
               inputRange: [-1, 0, 1],
-              outputRange: [-SCREEN_WIDTH, 0, SCREEN_WIDTH], // Slide from right to left
+              outputRange: [-SCREEN_WIDTH, 0, SCREEN_WIDTH],
             });
-
             return (
               <Animated.View
                 key={card.id}
                 style={[
                   styles.promotionalCard,
-                  {
-                    backgroundColor: card.backgroundColor,
-                    transform: [{ translateX }],
-                  },
+                  { backgroundColor: card.bg, transform: [{ translateX }] },
                 ]}
               >
-                <Text style={styles.promotionalText}>{card.text}</Text>
-                {card.cta && (
-                  <Text style={styles.promotionalCTA}>{card.cta}</Text>
-                )}
+                {/* Decorative large circle in background */}
+                <View style={styles.cardDecorCircle} />
+                {/* Decorative small circle */}
+                <View style={styles.cardDecorCircleSmall} />
+
+                {/* Left: text content */}
+                <View style={styles.cardContentLeft}>
+                  <Text style={[styles.promotionalText, { color: card.textColor }]}>
+                    {card.text}
+                  </Text>
+                  {card.cta ? (
+                    <Text style={[styles.promotionalCTA, { color: card.ctaColor }]}>
+                      {card.cta}
+                    </Text>
+                  ) : null}
+                </View>
+
+                {/* Right: icon */}
+                <View style={styles.cardIconWrap}>
+                  <Ionicons name={card.icon} size={32} color="rgba(255,255,255,0.18)" />
+                </View>
               </Animated.View>
             );
           })}
         </View>
 
-        {/* Carousel Indicator */}
+        {/* Carousel Dots */}
         <View style={styles.carouselIndicator}>
           {promotionalCards.map((_, index) => (
             <View
@@ -285,76 +315,34 @@ export default function HomeScreen() {
           ))}
         </View>
 
-        {/* App Features Section */}
+        {/* Divider */}
+        <View style={styles.divider} />
+
+        {/* Features Section */}
         <View style={styles.featuresSection}>
-          <Text style={styles.featuresTitle}>How Anudaan Works</Text>
-          
-          <View style={styles.featureCard}>
-            <View style={[styles.featureIconContainer, { backgroundColor: '#FFE5E5' }]}>
-              <Ionicons name="search" size={28} color="#FF6B6B" />
-            </View>
-            <View style={styles.featureContent}>
-              <Text style={styles.featureTitle}>Smart Search</Text>
-              <Text style={styles.featureDescription}>
-                Find items you need or people who need your items instantly with our smart matching system
-              </Text>
-            </View>
-          </View>
+          <Text style={styles.featuresTitle}>How It Works</Text>
 
-          <View style={styles.featureCard}>
-            <View style={[styles.featureIconContainer, { backgroundColor: '#E0F7F4' }]}>
-              <Ionicons name="map" size={28} color="#4ECDC4" />
-            </View>
-            <View style={styles.featureContent}>
-              <Text style={styles.featureTitle}>Hyper-Local</Text>
-              <Text style={styles.featureDescription}>
-                Connect with neighbors within 5-10km radius. No shipping needed, just meet and handover
-              </Text>
-            </View>
-          </View>
+          {features.map((f, i) => (
+            <View key={i} style={styles.featureRow}>
+              {/* Icon circle */}
+              <View style={styles.featureIconCircle}>
+                <Ionicons name={f.icon} size={20} color="#111" />
+              </View>
 
-          <View style={styles.featureCard}>
-            <View style={[styles.featureIconContainer, { backgroundColor: '#E8F5E9' }]}>
-              <Ionicons name="chatbubbles" size={28} color="#4CAF50" />
+              {/* Right: text */}
+              <View style={styles.featureTextBlock}>
+                <Text style={styles.featureTitle}>{f.title}</Text>
+                <Text style={styles.featureDescription}>{f.description}</Text>
+              </View>
             </View>
-            <View style={styles.featureContent}>
-              <Text style={styles.featureTitle}>Direct Communication</Text>
-              <Text style={styles.featureDescription}>
-                Chat directly with donors or requesters to coordinate safe handovers at public locations
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.featureCard}>
-            <View style={[styles.featureIconContainer, { backgroundColor: '#FFF3E0' }]}>
-              <Ionicons name="shield-checkmark" size={28} color="#FF9800" />
-            </View>
-            <View style={styles.featureContent}>
-              <Text style={styles.featureTitle}>Safe & Secure</Text>
-              <Text style={styles.featureDescription}>
-                Privacy-first approach with location masking and verified profiles for safe exchanges
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.featureCard}>
-            <View style={[styles.featureIconContainer, { backgroundColor: '#F3E5F5' }]}>
-              <Ionicons name="heart" size={28} color="#9C27B0" />
-            </View>
-            <View style={styles.featureContent}>
-              <Text style={styles.featureTitle}>Community Driven</Text>
-              <Text style={styles.featureDescription}>
-                Build stronger neighborhoods by sharing resources and helping those in need around you
-              </Text>
-            </View>
-          </View>
+          ))}
         </View>
 
-        {/* Copyright Section */}
-        <View style={styles.copyrightSection}>
-          <Text style={styles.copyrightText}>
-            All rights reserved to Nihit Tyagi
-          </Text>
+        {/* Footer */}
+        <View style={styles.footer}>
+          <View style={styles.footerDot} />
+          <Text style={styles.footerText}>© Nihit Tyagi · All rights reserved</Text>
+          <View style={styles.footerDot} />
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -364,190 +352,277 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#FAFAFA',
   },
+
+  /* ── Header ── */
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingBottom: 15,
-    backgroundColor: '#fff',
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    paddingHorizontal: 22,
+    paddingBottom: 16,
+    backgroundColor: '#FAFAFA',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E8E8E8',
   },
   headerTitle: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#11181C',
+    fontSize: 30,
+    fontWeight: '800',
+    color: '#0D0D0D',
+    letterSpacing: -0.5,
   },
   profileButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: '#E0E0E0',
   },
-  scrollView: {
-    flex: 1,
-  },
+
+  scrollView: { flex: 1 },
   scrollContent: {
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 100, // Space for bottom nav
+    paddingHorizontal: 22,
+    paddingTop: 24,
+    paddingBottom: 110,
   },
+
+  /* ── Action Buttons ── */
   actionButtonsContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 24,
     gap: 12,
+    marginBottom: 28,
   },
   actionButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    borderRadius: 16,
-    gap: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
-    elevation: 5,
+    paddingVertical: 15,
+    paddingHorizontal: 14,
+    borderRadius: 14,
+    gap: 8,
   },
   donateButton: {
-    backgroundColor: '#2196F3', // Blue
+    backgroundColor: '#F0F0F0',
+    borderWidth: 1,
+    borderColor: '#E0E0E0',
   },
   requestButton: {
-    backgroundColor: '#FF9800', // Orange
+    backgroundColor: '#111',
   },
-  buttonIconContainer: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  buttonIconWrap: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#DDD',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  actionButtonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '700',
-    letterSpacing: 0.5,
+  buttonIconWrapDark: {
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
+  donateButtonText: {
+    flex: 1,
+    color: '#111',
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+  requestButtonText: {
+    flex: 1,
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+    letterSpacing: 0.2,
+  },
+
+  /* ── Section Label ── */
+  sectionLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 14,
+    gap: 10,
+  },
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: '600',
+    letterSpacing: 2,
+    color: '#888',
+    textTransform: 'uppercase',
+  },
+  sectionLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: '#E4E4E4',
+  },
+
+  /* ── Carousel ── */
   carouselContainer: {
-    height: 140,
-    marginBottom: 20,
+    height: 155,
+    marginBottom: 14,
     position: 'relative',
     overflow: 'hidden',
+    borderRadius: 20,
   },
   promotionalCard: {
     position: 'absolute',
     width: '100%',
-    height: 140,
-    borderRadius: 24,
-    padding: 24,
-    justifyContent: 'center',
+    height: 155,
+    borderRadius: 20,
+    paddingVertical: 22,
+    paddingLeft: 22,
+    paddingRight: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    overflow: 'hidden',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 5,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 14,
+    elevation: 8,
+  },
+  /* Decorative circles baked into the card */
+  cardDecorCircle: {
+    position: 'absolute',
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    right: -30,
+    top: -30,
+  },
+  cardDecorCircleSmall: {
+    position: 'absolute',
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    right: 50,
+    bottom: -20,
+  },
+  cardContentLeft: {
+    flex: 1,
+    paddingRight: 10,
+  },
+  cardIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.1)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    flexShrink: 0,
   },
   promotionalText: {
-    fontSize: 18,
+    fontSize: 14,
     fontWeight: '500',
-    color: '#11181C',
-    marginBottom: 8,
-    lineHeight: 24,
+    lineHeight: 21,
+    marginBottom: 6,
   },
   promotionalCTA: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#11181C',
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: -0.3,
   },
+
+  /* Dots */
   carouselIndicator: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 20,
+    gap: 6,
+    marginBottom: 28,
   },
   dot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#d0d0d0',
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#D8D8D8',
   },
   dotActive: {
-    backgroundColor: '#888',
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    backgroundColor: '#0D0D0D',
+    width: 18,
+    borderRadius: 3,
   },
+
+  divider: {
+    height: 1,
+    backgroundColor: '#EBEBEB',
+    marginBottom: 28,
+  },
+
+  /* ── Features ── */
   featuresSection: {
-    marginTop: 20,
-    marginBottom: 30,
+    marginBottom: 32,
   },
   featuresTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#11181C',
+    fontSize: 22,
+    fontWeight: '800',
+    color: '#0D0D0D',
+    letterSpacing: -0.4,
     marginBottom: 20,
-    textAlign: 'center',
   },
-  featureCard: {
+  featureRow: {
     flexDirection: 'row',
-    backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
-    borderWidth: 1,
-    borderColor: '#f0f0f0',
+    alignItems: 'flex-start',
+    marginBottom: 20,
+    gap: 14,
   },
-  featureIconContainer: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+  featureIconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#F0F0F0',
+    borderWidth: 1,
+    borderColor: '#E4E4E4',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 16,
   },
-  featureContent: {
+  featureTextBlock: {
     flex: 1,
+    paddingTop: 2,
   },
   featureTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#11181C',
-    marginBottom: 6,
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#111',
+    marginBottom: 4,
+    letterSpacing: 0.1,
   },
   featureDescription: {
-    fontSize: 14,
-    color: '#666',
-    lineHeight: 20,
+    fontSize: 13,
+    color: '#777',
+    lineHeight: 19,
   },
-  copyrightSection: {
-    paddingVertical: 20,
+
+  /* ── Footer ── */
+  footer: {
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingTop: 20,
     borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
-    marginTop: 10,
+    borderTopColor: '#EBEBEB',
   },
-  copyrightText: {
-    fontSize: 12,
-    color: '#999',
+  footerDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#CCC',
+  },
+  footerText: {
+    fontSize: 11,
+    color: '#BBB',
     fontWeight: '500',
+    letterSpacing: 0.3,
   },
 });
