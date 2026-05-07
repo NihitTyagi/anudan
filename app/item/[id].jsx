@@ -1,22 +1,31 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Image,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import LoadingSpinner from '../../components/LoadingSpinner';
 import UserAvatar from '../../components/UserAvatar';
-import { isValidCoordinate } from '../../lib/geo';
+import { decodePolyline, formatDistance, isValidCoordinate } from '../../lib/geo';
+
+const GOOGLE_MAPS_APIKEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_DISTANCE_KEY || (Platform.OS === 'android' 
+  ? process.env.EXPO_PUBLIC_GOOGLE_MAPS_ANDROID_KEY 
+  : process.env.EXPO_PUBLIC_GOOGLE_MAPS_IOS_KEY);
 
 export default function ItemDetailScreen() {
   const router = useRouter();
   const params = useLocalSearchParams();
   const insets = useSafeAreaInsets();
+  const mapRef = useRef(null);
   
   // Get item data from params
   const itemId = params.id;
@@ -26,13 +35,142 @@ export default function ItemDetailScreen() {
   const posterUserId = params.posterUserId || '';
   const avatarPath = params.avatarPath || '';
   const imageUrl = params.imageUrl || '';
-  const latitude = params.latitude ? Number(params.latitude) : null;
-  const longitude = params.longitude ? Number(params.longitude) : null;
+  const itemLat = params.latitude ? Number(params.latitude) : null;
+  const itemLng = params.longitude ? Number(params.longitude) : null;
   const locationLabel = params.locationLabel || '';
   const date = params.date || 'Recently';
   const itemType = params.type || 'request'; // 'request' or 'donation'
   const isRequest = itemType === 'request';
-  const hasLocation = isValidCoordinate(latitude, longitude);
+  const hasItemLocation = isValidCoordinate(itemLat, itemLng);
+
+  const [userLocation, setUserLocation] = useState(null);
+  const [distance, setDistance] = useState(null);
+  const [duration, setDuration] = useState(null);
+  const [routeCoords, setRouteCoords] = useState([]);
+  const [routingError, setRoutingError] = useState(false);
+  const [isRouting, setIsRouting] = useState(false);
+  const [isLocationLoading, setIsLocationLoading] = useState(true);
+  const [isMapReady, setIsMapReady] = useState(false);
+
+  // Helper to fit map to show both markers
+  const fitMapToMarkers = () => {
+    if (mapRef.current && userLocation && hasItemLocation) {
+      const coords = [
+        userLocation,
+        { latitude: itemLat, longitude: itemLng }
+      ];
+      mapRef.current.fitToCoordinates(coords, {
+        edgePadding: { top: 70, right: 70, bottom: 70, left: 70 },
+        animated: true,
+      });
+    }
+  };
+
+  // Fetch road route using the modern Google Routes API
+  const fetchRoadRoute = async (origin, dest) => {
+    if (!GOOGLE_MAPS_APIKEY) return;
+    setIsRouting(true);
+    setRoutingError(false);
+    
+    try {
+      const response = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-Api-Key': GOOGLE_MAPS_APIKEY,
+          'X-Goog-FieldMask': 'routes.distanceMeters,routes.duration,routes.polyline.encodedPolyline',
+        },
+        body: JSON.stringify({
+          origin: { location: { latLng: { latitude: origin.latitude, longitude: origin.longitude } } },
+          destination: { location: { latLng: { latitude: dest.latitude, longitude: dest.longitude } } },
+          travelMode: 'DRIVE',
+          routingPreference: 'TRAFFIC_AWARE',
+        }),
+      });
+
+      const data = await response.json();
+      if (data.routes && data.routes.length > 0) {
+        const route = data.routes[0];
+        setDistance(route.distanceMeters);
+        // Duration comes as a string like "120s", we need seconds
+        const seconds = parseInt(route.duration.replace('s', ''));
+        setDuration(seconds / 60); // minutes
+        
+        const points = decodePolyline(route.polyline.encodedPolyline);
+        setRouteCoords(points);
+        
+        // Fit map to show the whole route if map is ready
+        if (mapRef.current && points.length > 0 && isMapReady) {
+          mapRef.current.fitToCoordinates(points, {
+            edgePadding: { top: 70, right: 70, bottom: 70, left: 70 },
+            animated: true,
+          });
+        }
+      } else {
+        console.error("No routes found:", data);
+        setRoutingError(true);
+        if (isMapReady) fitMapToMarkers();
+      }
+    } catch (error) {
+      console.error("Routes API Error:", error);
+      setRoutingError(true);
+      if (isMapReady) fitMapToMarkers();
+    } finally {
+      setIsRouting(false);
+    }
+  };
+
+  // Fetch user location
+  useEffect(() => {
+    (async () => {
+      try {
+        setIsLocationLoading(true);
+        let { status } = await Location.requestForegroundPermissionsAsync();
+        if (status !== 'granted') {
+          setIsLocationLoading(false);
+          return;
+        }
+        
+        // Fast attempt: get last known position
+        let loc = await Location.getLastKnownPositionAsync({});
+        
+        // Accurate attempt: if last known is null or old, get current
+        if (!loc) {
+          loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+        }
+
+        if (loc) {
+          const userCoords = {
+            latitude: loc.coords.latitude,
+            longitude: loc.coords.longitude,
+          };
+          setUserLocation(userCoords);
+          
+          if (hasItemLocation) {
+            fetchRoadRoute(userCoords, { latitude: itemLat, longitude: itemLng });
+          }
+        }
+      } catch (e) {
+        console.error("Error getting location in details:", e);
+      } finally {
+        setIsLocationLoading(false);
+      }
+    })();
+  }, [hasItemLocation, itemLat, itemLng]);
+
+  // Fit map when it becomes ready OR when location/route changes
+  useEffect(() => {
+    if (isMapReady) {
+      if (routeCoords.length > 0) {
+        mapRef.current?.fitToCoordinates(routeCoords, {
+          edgePadding: { top: 70, right: 70, bottom: 70, left: 70 },
+          animated: true,
+        });
+      } else if (userLocation && hasItemLocation) {
+        fitMapToMarkers();
+      }
+    }
+  }, [isMapReady, userLocation, routeCoords, hasItemLocation, routingError]);
 
   const handleChat = () => {
     const chatId = `chat_${itemId}_${Date.now()}`;
@@ -116,16 +254,120 @@ export default function ItemDetailScreen() {
 
             <View style={styles.infoRow}>
               <Ionicons name="location-outline" size={20} color="#666" />
-              <Text style={styles.infoText}>
-                {locationLabel
-                  ? locationLabel
-                  : hasLocation && latitude !== null && longitude !== null
-                  ? `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`
-                  : 'Location not provided'}
-              </Text>
+              <View style={{ flex: 1 }}>
+                {isLocationLoading || isRouting ? (
+                  <Text style={[styles.infoText, { color: '#999' }]}>Calculating location...</Text>
+                ) : (
+                  <>
+                    <Text style={styles.infoText}>
+                      {locationLabel || (hasItemLocation ? 'Location specified' : 'Location not provided')}
+                    </Text>
+                    {distance !== null && (
+                      <Text style={styles.distanceSubtext}>
+                        Distance: {formatDistance(distance)} from your location
+                      </Text>
+                    )}
+                  </>
+                )}
+              </View>
             </View>
           </View>
         </View>
+
+        {/* Map Section - Path between User and Item */}
+        {hasItemLocation && (
+          <View style={styles.mapSection}>
+            <Text style={styles.sectionTitle}>Road Route & Distance</Text>
+            <View style={styles.mapContainer}>
+              {isLocationLoading || isRouting ? (
+                <View style={styles.mapLoader}>
+                  <LoadingSpinner message="Calculating road route..." />
+                </View>
+              ) : (
+                <MapView
+                  ref={mapRef}
+                  provider={PROVIDER_GOOGLE}
+                  style={styles.map}
+                  initialRegion={{
+                    latitude: itemLat,
+                    longitude: itemLng,
+                    latitudeDelta: 0.05,
+                    longitudeDelta: 0.05,
+                  }}
+                  scrollEnabled={true}
+                  zoomEnabled={true}
+                  onMapReady={() => setIsMapReady(true)}
+                >
+                  {/* Item Marker */}
+                  <Marker
+                    coordinate={{ latitude: itemLat, longitude: itemLng }}
+                    title="Item Location"
+                    pinColor="#F44336"
+                  />
+
+                  {/* User Marker */}
+                  {userLocation && (
+                    <Marker
+                      coordinate={userLocation}
+                      title="Your Location"
+                      pinColor="#2196F3"
+                    />
+                  )}
+
+                  {/* Actual Road Directions using modern Routes API path */}
+                  {userLocation && routeCoords.length > 0 && (
+                    <Polyline
+                      coordinates={routeCoords}
+                      strokeColor="#0a7ea4"
+                      strokeWidth={4}
+                    />
+                  )}
+                  
+                  {/* Fallback Straight Line if Routing Fails */}
+                  {userLocation && routingError && (
+                    <Polyline
+                      coordinates={[
+                        userLocation,
+                        { latitude: itemLat, longitude: itemLng }
+                      ]}
+                      strokeColor="#F44336"
+                      strokeWidth={2}
+                      lineDashPattern={[5, 5]}
+                    />
+                  )}
+                </MapView>
+              )}
+            </View>
+
+            {/* Distance and Time Info - Now Below Map */}
+            {!(isLocationLoading || isRouting) && (
+              <View style={styles.routeDetailsContainer}>
+                <View style={styles.routeDetailItem}>
+                  <Ionicons 
+                    name={routingError ? "alert-circle-outline" : "car-outline"} 
+                    size={20} 
+                    color={routingError ? "#F44336" : "#11181C"} 
+                  />
+                  <Text style={[styles.routeDetailText, routingError && { color: '#F44336' }]}>
+                    {routingError 
+                      ? "Road route unavailable" 
+                      : distance !== null 
+                        ? `${formatDistance(distance)} road distance` 
+                        : 'Location specified'}
+                  </Text>
+                </View>
+                {duration !== null && !routingError && (
+                  <View style={[styles.routeDetailItem, { marginTop: 8 }]}>
+                    <Ionicons name="time-outline" size={20} color="#444" />
+                    <Text style={[styles.routeDetailText, { color: '#444' }]}>
+                      {Math.round(duration)} mins travel time
+                    </Text>
+                  </View>
+                )}
+              </View>
+            )}
+          </View>
+        )}
       </ScrollView>
 
       {/* Chat Button - Fixed at Bottom */}
@@ -254,7 +496,60 @@ const styles = StyleSheet.create({
   },
   infoText: {
     fontSize: 15,
+    color: '#11181C',
+    fontWeight: '500',
+  },
+  distanceSubtext: {
+    fontSize: 13,
     color: '#666',
+    marginTop: 2,
+  },
+  mapSection: {
+    marginTop: 25,
+    paddingTop: 25,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#11181C',
+    marginBottom: 15,
+  },
+  mapContainer: {
+    height: 200,
+    borderRadius: 16,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    position: 'relative',
+  },
+  mapLoader: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f9f9f9',
+  },
+  map: {
+    flex: 1,
+  },
+  routeDetailsContainer: {
+    marginTop: 15,
+    backgroundColor: '#f8f9fa',
+    padding: 15,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#eee',
+  },
+  routeDetailItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  routeDetailText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#11181C',
   },
   actionContainer: {
     paddingHorizontal: 20,
@@ -269,18 +564,13 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   chatButton: {
-    backgroundColor: '#0a7ea4',
+    backgroundColor: '#000',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 16,
+    paddingVertical: 15,
     borderRadius: 12,
-    gap: 8,
-    shadowColor: '#0a7ea4',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 3,
+    gap: 10,
   },
   chatButtonText: {
     color: '#fff',

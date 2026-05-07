@@ -4,20 +4,19 @@ import * as Location from 'expo-location';
 import { useRouter } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-    Alert,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from 'react-native';
 import MapView, { Circle, Marker, PROVIDER_GOOGLE } from 'react-native-maps';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../components/AuthProvider';
 import LoadingSpinner from '../../components/LoadingSpinner';
-import UserAvatar from '../../components/UserAvatar';
-import { DEFAULT_REGION, haversineMeters, isValidCoordinate, isWithinRadiusMeters, NEARBY_RADIUS_M, normalizeSearch } from '../../lib/geo';
+import { DEFAULT_REGION, formatDistance, haversineMeters, isValidCoordinate, isWithinRadiusMeters, NEARBY_RADIUS_M, normalizeSearch } from '../../lib/geo';
 import { supabase } from '../../lib/supabaseClient';
 
 // The Donate tab shows people in need nearby -> load request_items from DB
@@ -87,7 +86,7 @@ export default function DonateScreen() {
         }))
       ];
       mapRef.current.fitToCoordinates(coords, {
-        edgePadding: { top: 80, right: 50, bottom: 50, left: 50 },
+        edgePadding: { top: 100, right: 60, bottom: 60, left: 60                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      },
         animated: true,
       });
       return;
@@ -335,6 +334,10 @@ export default function DonateScreen() {
           ) : (
             visibleItems.map((request) => {
               const posterName = request.poster_name || profileMap[request.user_id] || 'User';
+              const dist = isValidCoordinate(request.latitude, request.longitude)
+                ? haversineMeters(userLocation.latitude, userLocation.longitude, Number(request.latitude), Number(request.longitude))
+                : null;
+              
               return (
               <TouchableOpacity
                 key={request.id}
@@ -366,21 +369,38 @@ export default function DonateScreen() {
                 }}
                 activeOpacity={0.7}
               >
-                <Text style={styles.requestTitle}>{request.title}</Text>
-                <Text style={styles.requestDescription}>{request.description}</Text>
-                <View style={styles.requestUserInfo}>
-                  <UserAvatar
-                    userId={request.user_id}
-                    name={posterName}
-                    storagePath={avatarMap[request.user_id]}
-                    size={32}
-                  />
-                  <Text style={styles.userName}>
-                    {posterName}
-                  </Text>
-                  <Text style={styles.requestDate}>
-                    {request.created_at ? new Date(request.created_at).toLocaleDateString() : 'Recently'}
-                  </Text>
+                <View style={styles.requestHeader}>
+                  <Text style={styles.requestTitle} numberOfLines={1}>{request.title}</Text>
+                  {dist !== null && (
+                    <View style={styles.distanceBadge}>
+                      <Ionicons name="location" size={12} color="#666" />
+                      <Text style={styles.distanceText}>{formatDistance(dist)} est.</Text>
+                    </View>
+                  )}
+                </View>
+                
+                <Text style={styles.requestDescription} numberOfLines={2}>{request.description}</Text>
+                
+                <View style={styles.requestFooter}>
+                  {request.location_label ? (
+                    <View style={styles.locationInfo}>
+                      <Ionicons name="location-outline" size={14} color="#F44336" />
+                      <Text style={styles.locationLabel} numberOfLines={1}>
+                        {request.location_label}
+                      </Text>
+                    </View>
+                  ) : (
+                    <View style={styles.locationInfo}>
+                      <Ionicons name="location-outline" size={14} color="#999" />
+                      <Text style={styles.locationLabelFallback}>Location specified</Text>
+                    </View>
+                  )}
+                  
+                  <View style={styles.dateContainer}>
+                    <Text style={styles.requestDate}>
+                      {request.created_at ? new Date(request.created_at).toLocaleDateString() : 'Recently'}
+                    </Text>
+                  </View>
                 </View>
               </TouchableOpacity>
             );
@@ -552,29 +572,66 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: '#11181C',
+    flex: 1,
+  },
+  requestHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
     marginBottom: 6,
+    gap: 10,
+  },
+  distanceBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f0f0f0',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  distanceText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#666',
   },
   requestDescription: {
     fontSize: 14,
-    color: '#11181C',
-    marginBottom: 10,
+    color: '#444',
+    marginBottom: 12,
     lineHeight: 20,
   },
-  requestUserInfo: {
+  requestFooter: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    justifyContent: 'space-between',
+    borderTopWidth: 1,
+    borderTopColor: '#f5f5f5',
+    paddingTop: 10,
+    marginTop: 4,
   },
-  profileImagePlaceholder: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#e0e0e0',
-  },
-  userName: {
-    fontSize: 14,
-    color: '#11181C',
+  locationInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     flex: 1,
+    marginRight: 10,
+  },
+  locationLabel: {
+    fontSize: 13,
+    color: '#000',
+    fontWeight: '600',
+  },
+  locationLabelFallback: {
+    fontSize: 13,
+    color: '#999',
+    fontWeight: '500',
+  },
+  dateContainer: {
+    paddingLeft: 10,
+    borderLeftWidth: 1,
+    borderLeftColor: '#eee',
+    marginLeft: 10,
   },
   requestDate: {
     fontSize: 12,

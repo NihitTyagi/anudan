@@ -17,8 +17,7 @@ import MapView, { Circle, Marker, PROVIDER_GOOGLE } from 'react-native-maps'
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useAuth } from '../../components/AuthProvider'
 import LoadingSpinner from '../../components/LoadingSpinner'
-import UserAvatar from '../../components/UserAvatar'
-import { DEFAULT_REGION, haversineMeters, isValidCoordinate, isWithinRadiusMeters, NEARBY_RADIUS_M, normalizeSearch } from '../../lib/geo'
+import { DEFAULT_REGION, formatDistance, haversineMeters, isValidCoordinate, isWithinRadiusMeters, NEARBY_RADIUS_M, normalizeSearch } from '../../lib/geo'
 import { supabase } from '../../lib/supabaseClient'
 
 async function fetchDonations() {
@@ -378,6 +377,10 @@ useEffect(() => {
                 donation.poster_name ||
                 profileMap[donation.user_id] ||
                 'User'
+              const dist = isValidCoordinate(donation.latitude, donation.longitude)
+                ? haversineMeters(userLocation.latitude, userLocation.longitude, Number(donation.latitude), Number(donation.longitude))
+                : null;
+
               return (
               <TouchableOpacity
                 key={donation.id}
@@ -411,40 +414,60 @@ useEffect(() => {
                 activeOpacity={0.7}
               >
                 {img ? (
-    <Image
-      source={{ uri: img }}
-      style={styles.imagePlaceholder}
-      onError={() => {
-        // Remove broken URL so placeholder shows on re-render
-        setImageMap(prev => {
-          const next = { ...prev };
-          delete next[donation.id];
-          return next;
-        })
-      }}
-    />
-  ) : (
-    <View style={styles.imagePlaceholder}>
-      <Ionicons name="image-outline" size={32} color="#999" />
-    </View>
-  )}
+                  <Image
+                    source={{ uri: img }}
+                    style={styles.imagePlaceholder}
+                    onError={() => {
+                      // Remove broken URL so placeholder shows on re-render
+                      setImageMap(prev => {
+                        const next = { ...prev };
+                        delete next[donation.id];
+                        return next;
+                      })
+                    }}
+                  />
+                ) : (
+                  <View style={styles.imagePlaceholder}>
+                    <Ionicons name="image-outline" size={32} color="#999" />
+                  </View>
+                )}
 
                 {/* Item Details */}
                 <View style={styles.donationDetails}>
-                  <Text style={styles.donationTitle}>{donation.title}</Text>
-                  <Text style={styles.donationDescription}>
+                  <View style={styles.donationHeader}>
+                    <Text style={styles.donationTitle} numberOfLines={1}>{donation.title}</Text>
+                    {dist !== null && (
+                      <View style={styles.distanceBadge}>
+                      <Ionicons name="location" size={12} color="#666" />
+                      <Text style={styles.distanceText}>{formatDistance(dist)} est.</Text>
+                    </View>
+                    )}
+                  </View>
+                  
+                  <Text style={styles.donationDescription} numberOfLines={2}>
                     {donation.description}
                   </Text>
-                  <View style={styles.posterRow}>
-                    <UserAvatar
-                      userId={donation.user_id}
-                      name={posterName}
-                      storagePath={avatarMap[donation.user_id]}
-                      size={28}
-                    />
-                    <Text style={styles.posterName} numberOfLines={1}>
-                      {posterName}
-                    </Text>
+                  
+                  <View style={styles.donationFooter}>
+                    {donation.location_label ? (
+                      <View style={styles.locationInfo}>
+                        <Ionicons name="location-outline" size={14} color="#F44336" />
+                        <Text style={styles.locationLabel} numberOfLines={1}>
+                          {donation.location_label}
+                        </Text>
+                      </View>
+                    ) : (
+                      <View style={styles.locationInfo}>
+                        <Ionicons name="location-outline" size={14} color="#999" />
+                        <Text style={styles.locationLabelFallback}>Location specified</Text>
+                      </View>
+                    )}
+
+                    <View style={styles.dateContainer}>
+                      <Text style={styles.donationDate}>
+                        {donation.created_at ? new Date(donation.created_at).toLocaleDateString() : 'Recently'}
+                      </Text>
+                    </View>
                   </View>
                 </View>
               </TouchableOpacity>
@@ -629,27 +652,73 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   donationTitle: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: 'bold',
     color: '#11181C',
+    flex: 1,
+  },
+  donationHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     marginBottom: 4,
+    gap: 10,
+  },
+  distanceBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f0f0f0',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
+  },
+  distanceText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#666',
   },
   donationDescription: {
     fontSize: 14,
     color: '#666',
     lineHeight: 20,
+    marginBottom: 8,
   },
-  posterRow: {
+  donationFooter: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginTop: 8,
+    justifyContent: 'space-between',
+    borderTopWidth: 1,
+    borderTopColor: '#f5f5f5',
+    paddingTop: 8,
+    marginTop: 4,
   },
-  posterName: {
-    fontSize: 13,
-    color: '#11181C',
+  locationInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     flex: 1,
+    marginRight: 10,
+  },
+  locationLabel: {
+    fontSize: 13,
+    color: '#000',
+    fontWeight: '600',
+  },
+  locationLabelFallback: {
+    fontSize: 13,
+    color: '#999',
     fontWeight: '500',
+  },
+  dateContainer: {
+    paddingLeft: 10,
+    borderLeftWidth: 1,
+    borderLeftColor: '#eee',
+    marginLeft: 10,
+  },
+  donationDate: {
+    fontSize: 11,
+    color: '#999',
   },
   fab: {
     position: 'absolute',
