@@ -4,15 +4,15 @@ import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  Alert,
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../components/AuthProvider';
@@ -151,12 +151,13 @@ export default function ProfileScreen() {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color="#11181C" />
+          <Ionicons name="arrow-back" size={22} color="#000" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Profile</Text>
-        <View style={{ width: 34 }} />
+        <View style={{ width: 38 }} />
       </View>
 
       <ScrollView
@@ -165,67 +166,94 @@ export default function ProfileScreen() {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        <View style={styles.infoCard}>
-          <Text style={styles.sectionTitle}>Profile photo</Text>
+        {/* Avatar Hero Section */}
+        <View style={styles.heroSection}>
           {!loaded ? (
             <LoadingSpinner message="Loading profile..." />
           ) : (
-            <View style={styles.avatarRow}>
-              {localAvatarUri ? (
-                <Image source={{ uri: localAvatarUri }} style={styles.avatarLarge} />
-              ) : (
-                <UserAvatar
-                  userId={user?.id}
-                  name={displayName || email}
-                  storagePath={avatarPath}
-                  size={96}
-                />
-              )}
-              <TouchableOpacity
-                style={styles.changePhotoBtn}
-                onPress={pickAndUploadAvatar}
-                disabled={saving}
-              >
-                {saving && localAvatarUri ? (
-                  <ActivityIndicator color="#2196F3" />
+            <>
+              <View style={styles.avatarWrapper}>
+                {localAvatarUri ? (
+                  <Image source={{ uri: localAvatarUri }} style={styles.avatarLarge} />
                 ) : (
-                  <>
-                    <Ionicons name="camera-outline" size={20} color="#2196F3" />
-                    <Text style={styles.changePhotoText}>Change photo</Text>
-                  </>
+                  <UserAvatar
+                    userId={user?.id}
+                    name={displayName || email}
+                    storagePath={avatarPath}
+                    size={96}
+                  />
                 )}
-              </TouchableOpacity>
-            </View>
+                <TouchableOpacity
+                  style={styles.cameraOverlay}
+                  onPress={pickAndUploadAvatar}
+                  disabled={saving}
+                >
+                  {saving && localAvatarUri ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <Ionicons name="camera" size={16} color="#fff" />
+                  )}
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.heroName}>{displayName || 'Set your name'}</Text>
+              <Text style={styles.heroEmail}>{email}</Text>
+            </>
           )}
         </View>
 
-        <View style={styles.infoCard}>
-          <Text style={styles.sectionTitle}>Your Account</Text>
-          <View style={styles.infoRow}>
-            <Ionicons name="mail" size={18} color="#666" />
-            <Text style={styles.infoText}>{email}</Text>
+        {/* Divider */}
+        <View style={styles.divider} />
+
+        {/* Account Info Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>ACCOUNT</Text>
+
+          <View style={styles.rowItem}>
+            <View style={styles.rowLeft}>
+              <View style={styles.iconBox}>
+                <Ionicons name="mail-outline" size={16} color="#000" />
+              </View>
+              <View>
+                <Text style={styles.rowLabel}>Email</Text>
+                <Text style={styles.rowValue}>{email}</Text>
+              </View>
+            </View>
           </View>
-          <View style={styles.infoRow}>
-            <Ionicons name="calendar-outline" size={18} color="#666" />
-            <Text style={styles.infoText}>Joined on {joined}</Text>
+
+          <View style={styles.separator} />
+
+          <View style={styles.rowItem}>
+            <View style={styles.rowLeft}>
+              <View style={styles.iconBox}>
+                <Ionicons name="calendar-outline" size={16} color="#000" />
+              </View>
+              <View>
+                <Text style={styles.rowLabel}>Member Since</Text>
+                <Text style={styles.rowValue}>{joined}</Text>
+              </View>
+            </View>
           </View>
-          <View style={{ height: 8 }} />
-          <View style={styles.nameHeader}>
-            <Text style={styles.sectionTitle}>Name</Text>
-            {loaded && (
+        </View>
+
+        {/* Name Section */}
+        <View style={styles.section}>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionLabel}>NAME</Text>
+            {loaded && !editingName && (
               <TouchableOpacity
                 onPress={() => setEditingName(true)}
-                style={styles.editIconButton}
                 disabled={saving}
+                style={styles.editTextBtn}
               >
-                <Ionicons name="create-outline" size={18} color="#2196F3" />
+                <Text style={styles.editTextLabel}>Edit</Text>
               </TouchableOpacity>
             )}
           </View>
+
           {!loaded ? (
-            <ActivityIndicator />
+            <ActivityIndicator color="#000" style={{ marginVertical: 12 }} />
           ) : editingName ? (
-            <View>
+            <View style={styles.editNameBlock}>
               <TextInput
                 style={styles.input}
                 placeholder="Enter your name"
@@ -235,47 +263,72 @@ export default function ProfileScreen() {
               />
               <View style={styles.nameActions}>
                 <TouchableOpacity
-                  style={[styles.smallButton, { backgroundColor: '#e0e0e0' }]}
+                  style={styles.cancelBtn}
                   onPress={() => {
                     setEditingName(false);
                     setNameInput(displayName === email ? '' : displayName);
                   }}
                   disabled={saving}
                 >
-                  <Text style={styles.smallButtonText}>Cancel</Text>
+                  <Text style={styles.cancelBtnText}>Cancel</Text>
                 </TouchableOpacity>
                 <TouchableOpacity
-                  style={[styles.smallButton, { backgroundColor: '#2196F3' }]}
+                  style={[styles.saveNameBtn, (!nameInput.trim() || saving) && { opacity: 0.4 }]}
                   onPress={handleSaveName}
                   disabled={saving || !nameInput.trim()}
                 >
                   {saving ? (
-                    <ActivityIndicator color="#fff" />
+                    <ActivityIndicator color="#fff" size="small" />
                   ) : (
-                    <Text style={[styles.smallButtonText, { color: '#fff' }]}>Save</Text>
+                    <Text style={styles.saveNameBtnText}>Save</Text>
                   )}
                 </TouchableOpacity>
               </View>
             </View>
           ) : (
-            <Text style={styles.infoText}>{displayName || 'Not set'}</Text>
+            <View style={styles.rowItem}>
+              <View style={styles.rowLeft}>
+                <View style={styles.iconBox}>
+                  <Ionicons name="person-outline" size={16} color="#000" />
+                </View>
+                <View>
+                  <Text style={styles.rowLabel}>Full Name</Text>
+                  <Text style={styles.rowValue}>{displayName || 'Not set'}</Text>
+                </View>
+              </View>
+            </View>
           )}
         </View>
 
-        <View style={styles.infoCard}>
-          <Text style={styles.sectionTitle}>My Posts</Text>
-          <Text style={styles.infoText}>
-            View and manage all donation and request posts you have created.
-          </Text>
-          <TouchableOpacity style={styles.saveButton} onPress={handleMyPosts} disabled={saving || !loaded}>
-            {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveButtonText}>View My Posts</Text>}
+        {/* My Posts Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>ACTIVITY</Text>
+          <TouchableOpacity
+            style={styles.myPostsRow}
+            onPress={handleMyPosts}
+            disabled={saving || !loaded}
+            activeOpacity={0.7}
+          >
+            <View style={styles.rowLeft}>
+              <View style={styles.iconBox}>
+                <Ionicons name="list-outline" size={16} color="#000" />
+              </View>
+              <View>
+                <Text style={styles.rowValue}>My Posts</Text>
+                <Text style={styles.rowLabel}>View your donations & requests</Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#999" />
           </TouchableOpacity>
         </View>
 
+        {/* Logout */}
         <TouchableOpacity style={styles.logoutButton} onPress={handleLogout} activeOpacity={0.85}>
-          <Ionicons name="log-out" size={20} color="#fff" />
+          <Ionicons name="log-out-outline" size={18} color="#fff" />
           <Text style={styles.logoutText}>Log Out</Text>
         </TouchableOpacity>
+
+        <View style={{ height: 16 }} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -283,80 +336,146 @@ export default function ProfileScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
+
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 15,
-    paddingBottom: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
+    borderBottomColor: '#f0f0f0',
     backgroundColor: '#fff',
   },
-  backButton: { padding: 5, marginRight: 10 },
-  headerTitle: { fontSize: 18, fontWeight: '600', color: '#11181C', flex: 1 },
+  backButton: { padding: 4 },
+  headerTitle: {
+    flex: 1,
+    textAlign: 'center',
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#000',
+    letterSpacing: 0.3,
+  },
+
   scroll: { flex: 1 },
-  scrollContent: {
+  scrollContent: { paddingBottom: 32 },
+
+  /* Hero */
+  heroSection: {
+    alignItems: 'center',
+    paddingVertical: 32,
     paddingHorizontal: 20,
-    paddingTop: 16,
-    paddingBottom: 32,
-    flexGrow: 1,
-  },
-  infoCard: {
     backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 3,
-    borderWidth: 1,
-    borderColor: '#f0f0f0',
   },
-  sectionTitle: { fontSize: 16, fontWeight: '700', color: '#11181C', marginBottom: 10 },
-  avatarRow: { flexDirection: 'row', alignItems: 'center', gap: 16 },
-  avatarLarge: { width: 96, height: 96, borderRadius: 48, backgroundColor: '#e0e0e0' },
-  changePhotoBtn: {
+  avatarWrapper: { position: 'relative', marginBottom: 14 },
+  avatarLarge: { width: 96, height: 96, borderRadius: 48, backgroundColor: '#e8e8e8' },
+  cameraOverlay: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: '#000',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  heroName: { fontSize: 22, fontWeight: '700', color: '#000', letterSpacing: -0.3, marginBottom: 4 },
+  heroEmail: { fontSize: 13, color: '#888', letterSpacing: 0.1 },
+
+  divider: { height: 8, backgroundColor: '#f5f5f5' },
+
+  /* Sections */
+  section: {
+    paddingHorizontal: 20,
+    paddingVertical: 20,
+    borderBottomWidth: 8,
+    borderBottomColor: '#f5f5f5',
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  sectionLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#999',
+    letterSpacing: 1.2,
+    marginBottom: 16,
+  },
+  editTextBtn: { marginBottom: 16 },
+  editTextLabel: { fontSize: 13, fontWeight: '600', color: '#000' },
+
+  rowItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#2196F3',
+    justifyContent: 'space-between',
+    paddingVertical: 4,
   },
-  changePhotoText: { color: '#2196F3', fontWeight: '600', fontSize: 15 },
-  nameHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 },
-  editIconButton: { padding: 4 },
-  infoRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
-  infoText: { fontSize: 14, color: '#333' },
+  rowLeft: { flexDirection: 'row', alignItems: 'center', gap: 14 },
+  iconBox: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: '#f2f2f2',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rowLabel: { fontSize: 12, color: '#999', marginBottom: 1 },
+  rowValue: { fontSize: 14, fontWeight: '600', color: '#000' },
+
+  separator: { height: 1, backgroundColor: '#f0f0f0', marginVertical: 14, marginLeft: 50 },
+
+  myPostsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 4,
+  },
+
+  /* Edit name */
+  editNameBlock: { gap: 10 },
   input: {
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: '#e0e0e0',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 16,
-    color: '#11181C',
-    backgroundColor: '#fff',
-    marginBottom: 10,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 15,
+    color: '#000',
+    backgroundColor: '#fafafa',
   },
-  nameActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 8 },
-  smallButton: { borderRadius: 10, paddingVertical: 8, paddingHorizontal: 14 },
-  smallButtonText: { color: '#11181C', fontWeight: '600', fontSize: 13 },
-  saveButton: { backgroundColor: '#2196F3', paddingVertical: 10, borderRadius: 12, alignItems: 'center' },
-  saveButtonText: { color: '#fff', fontWeight: '700' },
+  nameActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 10 },
+  cancelBtn: {
+    borderWidth: 1.5,
+    borderColor: '#e0e0e0',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+  },
+  cancelBtnText: { color: '#000', fontWeight: '600', fontSize: 14 },
+  saveNameBtn: {
+    backgroundColor: '#000',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+  },
+  saveNameBtnText: { color: '#fff', fontWeight: '600', fontSize: 14 },
+
+  /* Logout */
   logoutButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor: '#FF6B6B',
-    paddingVertical: 12,
-    borderRadius: 14,
-    marginTop: 8,
+    backgroundColor: '#E53935',
+    marginHorizontal: 20,
+    marginTop: 24,
+    paddingVertical: 15,
+    borderRadius: 12,
   },
-  logoutText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  logoutText: { color: '#fff', fontSize: 15, fontWeight: '700', letterSpacing: 0.2 },
 });
