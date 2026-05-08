@@ -1,13 +1,11 @@
 import React, { useMemo } from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
-import { avatarPlaceholderColor, getAvatarPublicUrl, initialsFromName } from '../lib/avatarHelpers';
+import { Image, StyleSheet } from 'react-native';
+import { getAvatarPublicUrl } from '../lib/avatarHelpers';
 
 /**
- * Shows profile image from storage path or full URI, else initials on colored circle.
+ * Shows profile image from storage path or full URI, else a shared default avatar image.
  */
 export default function UserAvatar({
-  userId,
-  name,
   storagePath,
   uri,
   size = 40,
@@ -18,45 +16,16 @@ export default function UserAvatar({
     return '';
   }, [uri, storagePath]);
 
-  const bg = avatarPlaceholderColor(userId || name);
-  const initials = initialsFromName(name);
-
-  if (imageUri) {
-    return (
-      <Image
-        source={{ uri: imageUri }}
-        style={[styles.image, { width: size, height: size, borderRadius: size / 2 }]}
-      />
-    );
-  }
-
   return (
-    <View
-      style={[
-        styles.placeholder,
-        {
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          backgroundColor: bg,
-        },
-      ]}
-    >
-      <Text style={[styles.initials, { fontSize: size * 0.38 }]}>{initials}</Text>
-    </View>
+    <Image
+      source={imageUri ? { uri: imageUri } : require('../assets/images/default-avatar.png')}
+      style={[styles.image, { width: size, height: size, borderRadius: size / 2 }]}
+    />
   );
 }
 
 const styles = StyleSheet.create({
   image: {
     backgroundColor: '#e0e0e0',
-  },
-  placeholder: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  initials: {
-    fontWeight: '700',
-    color: '#fff',
   },
 });

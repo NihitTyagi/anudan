@@ -17,6 +17,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { supabase } from '../../lib/supabaseClient';
 
+const VERIFY_SUCCESS_URL = 'https://nihittyagi.github.io/anudan-verificationSucess/';
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Toast Notification
 // ─────────────────────────────────────────────────────────────────────────────
@@ -521,7 +523,7 @@ export default function LoginScreen() {
               last_name: lastName.trim() || null,
               full_name: fullName || null,
             },
-            emailRedirectTo: 'anudan://auth/reset-password',
+            emailRedirectTo: VERIFY_SUCCESS_URL,
           },
         });
 
@@ -548,7 +550,8 @@ export default function LoginScreen() {
         if (data.user && !data.session) {
           setSuccessModalData({
             title: 'Check your inbox',
-            message: "We've sent a confirmation link to your email. Please verify to activate your account."
+            message:
+              "We've sent a confirmation link to your email. After verification, return to the app and sign in."
           });
           setShowSuccessModal(true);
         } else {
