@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
-import { useEffect, useState } from 'react';
-import { Platform, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { DeviceEventEmitter, Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../../components/AuthProvider';
 import { supabase } from '../../lib/supabaseClient';
@@ -10,67 +10,124 @@ export default function TabLayout() {
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const [hasUnread, setHasUnread] = useState(false);
+  const latestRequestRef = useRef(0);
+  const mountedRef = useRef(false);
+  const debounceRef = useRef(null);
+  const isCheckingRef = useRef(false);
+  const rerunRequestedRef = useRef(false);
 
-  useEffect(() => {
-    if (!user) return;
+  const checkUnread = useCallback(async () => {
+    if (!user?.id || !mountedRef.current) return;
 
-    const checkUnread = async () => {
-      try {
-        // Step 1: get all room IDs where this user is a participant
-        const { data: roomData, error: roomError } = await supabase
-          .from('chat_rooms')
-          .select('id')
-          .or(`participant1_id.eq.${user.id},participant2_id.eq.${user.id}`);
+    if (isCheckingRef.current) {
+      rerunRequestedRef.current = true;
+      return;
+    }
 
-        if (roomError) {
-          console.error('Room fetch error:', roomError);
-          return;
-        }
+    const requestId = ++latestRequestRef.current;
+    isCheckingRef.current = true;
 
-        const roomIds = (roomData || []).map(r => r.id);
+    try {
+      const { data: roomData, error: roomError } = await supabase
+        .from('chat_rooms')
+        .select('id')
+        .or(`participant1_id.eq.${user.id},participant2_id.eq.${user.id}`);
 
-        if (roomIds.length === 0) {
-          setHasUnread(false);
-          return;
-        }
+      if (!mountedRef.current || requestId !== latestRequestRef.current) return;
 
-        // Step 2: count unread messages only in those rooms, not sent by current user
-        const { count, error: msgError } = await supabase
-          .from('chat_messages')
-          .select('*', { count: 'exact', head: true })
-          .in('room_id', roomIds)
-          .neq('sender_id', user.id)
-          .eq('is_read', false);
+      if (roomError) {
+        console.error('Room fetch error:', roomError);
+        return;
+      }
 
-        if (msgError) {
-          console.error('Check unread error:', msgError);
-          return;
-        }
+      const roomIds = (roomData || []).map((r) => r.id);
+      if (roomIds.length === 0) {
+        setHasUnread(false);
+        return;
+      }
 
-        setHasUnread(count > 0);
-      } catch (err) {
+      const { count, error: msgError } = await supabase
+        .from('chat_messages')
+        .select('*', { count: 'exact', head: true })
+        .in('room_id', roomIds)
+        .neq('sender_id', user.id)
+        .eq('is_read', false);
+
+      if (!mountedRef.current || requestId !== latestRequestRef.current) return;
+
+      if (msgError) {
+        console.error('Check unread error:', msgError);
+        return;
+      }
+
+      setHasUnread((count || 0) > 0);
+    } catch (err) {
+      if (mountedRef.current) {
         console.error('Unread check catch:', err);
       }
-    };
+    } finally {
+      isCheckingRef.current = false;
+      if (rerunRequestedRef.current && mountedRef.current) {
+        rerunRequestedRef.current = false;
+        checkUnread();
+      }
+    }
+  }, [user?.id]);
 
+  const scheduleUnreadCheck = useCallback(() => {
+    if (!mountedRef.current) return;
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+    debounceRef.current = setTimeout(() => {
+      checkUnread();
+    }, 150);
+  }, [checkUnread]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    mountedRef.current = true;
     checkUnread();
 
     // Subscribe to message changes and re-check
     const channel = supabase
       .channel('global-unread-dot')
       .on('postgres_changes', {
-        event: '*',
+        event: 'INSERT',
         schema: 'public',
         table: 'chat_messages',
       }, () => {
-        checkUnread();
+        scheduleUnreadCheck();
+      })
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'chat_messages',
+      }, () => {
+        scheduleUnreadCheck();
       })
       .subscribe();
 
+    const readSubscription = DeviceEventEmitter.addListener(
+      'chat:unread-changed',
+      () => {
+        scheduleUnreadCheck();
+      }
+    );
+
     return () => {
+      mountedRef.current = false;
+      latestRequestRef.current += 1;
+      isCheckingRef.current = false;
+      rerunRequestedRef.current = false;
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+        debounceRef.current = null;
+      }
+      readSubscription.remove();
       supabase.removeChannel(channel);
     };
-  }, [user]);
+  }, [user?.id, checkUnread, scheduleUnreadCheck]);
 
   return (
     <Tabs

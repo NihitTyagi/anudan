@@ -1,7 +1,8 @@
 {
   "expo": {
-    "name": "anudan",
-    "slug": "anudan",
+    "name": "Anudaan",
+    "slug": "anudaan",
+    "description": "Resource sharing platform",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -15,6 +16,7 @@
       }
     },
     "android": {
+      "package": "com.nihittyagi.anudaan",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -51,6 +53,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
+    },
+    "extra": {
+      "author": "Nihit Tyagi",
+      "router": {},
+      "eas": {
+        "projectId": "dcb0d1fc-9880-4185-897d-ac275cf4025a"
+      }
     }
   }
 }

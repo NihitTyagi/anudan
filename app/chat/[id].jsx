@@ -4,6 +4,7 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   Alert,
+  DeviceEventEmitter,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -38,6 +39,9 @@ export default function ChatInboxScreen() {
   const [loading, setLoading] = useState(true);
   const [otherUser, setOtherUser] = useState(null);
   const roomRef = useRef(null); // keep a ref so markAllRead can always access current room
+  const emitUnreadChanged = useCallback(() => {
+    DeviceEventEmitter.emit('chat:unread-changed');
+  }, []);
 
   // Params from navigation
   const initialUserName = paramStr(params.userName);
@@ -53,16 +57,21 @@ export default function ChatInboxScreen() {
   const markAllRead = useCallback(async (roomId) => {
     if (!roomId || !user?.id) return;
     try {
-      await supabase
+      const { error } = await supabase
         .from('chat_messages')
         .update({ is_read: true })
         .eq('room_id', roomId)
         .neq('sender_id', user.id)
         .eq('is_read', false);
+      if (error) {
+        console.error('markAllRead update error:', error);
+        return;
+      }
+      emitUnreadChanged();
     } catch (e) {
       console.error('markAllRead error:', e);
     }
-  }, [user?.id]);
+  }, [emitUnreadChanged, user?.id]);
 
   // ─── Load or Create Room ─────────────────────────────────────────────────
   useEffect(() => {
@@ -219,10 +228,15 @@ export default function ChatInboxScreen() {
 
           // If it's an incoming message, mark it read immediately
           if (!isMyMessage) {
-            await supabase
+            const { error } = await supabase
               .from('chat_messages')
               .update({ is_read: true })
               .eq('id', newMessage.id);
+            if (error) {
+              console.error('mark incoming message read error:', error);
+            } else {
+              emitUnreadChanged();
+            }
           }
         } else if (payload.eventType === 'UPDATE') {
           const updatedMessage = payload.new;
@@ -238,7 +252,7 @@ export default function ChatInboxScreen() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [room?.id, user?.id]);
+  }, [emitUnreadChanged, room?.id, user?.id]);
 
   // ─── Fetch messages + mark as read ──────────────────────────────────────
   async function fetchMessages(roomId) {
@@ -337,7 +351,7 @@ export default function ChatInboxScreen() {
   const displayUserId = otherUser?.id || posterUserId;
 
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
@@ -419,7 +433,7 @@ export default function ChatInboxScreen() {
         {/* Input Bar */}
         <View style={[
           styles.inputContainer,
-          { paddingBottom: Platform.OS === 'ios' ? Math.max(insets.bottom, 10) : 20 },
+          { paddingBottom: 10 },
         ]}>
           <TextInput
             style={styles.input}
